@@ -1,4 +1,7 @@
 import pandas as pd
+import re
+from dateutil import parser
+from typing import Any
 
 def explode_normalize(df: pd.DataFrame, col_list: list, key_cols: list = ["loteria", "concurso"]) -> pd.DataFrame:
     if col_list not in df.columns:
@@ -16,39 +19,81 @@ def explode_normalize(df: pd.DataFrame, col_list: list, key_cols: list = ["loter
 
     return df_final
 
-def explode_dezenas(df: pd.DataFrame, col: str = "dezenasOrdemSorteio", key_cols: list = ["loteria", "concurso"]) -> pd.DataFrame:
+def explode_ordered_list(df: pd.DataFrame, col: str, output_col: str, key_cols: list = ["loteria", "concurso"]) -> pd.DataFrame:
     if col not in df.columns:
         raise ValueError(f"Coluna {col} não existe no DataFrame")
 
-    df_exp = df[key_cols + [col]].explode(col)
-    df_exp["ordem"] = df_exp.groupby(key_cols).cumcount() + 1
-    df_exp["dezena"] = df_exp[col]
-    df_exp = df_exp.drop(columns=[col])
-    return df_exp
+    df_exploded = df[key_cols + [col]].explode(col)
+    df_exploded["ordem"] = df_exploded.groupby(key_cols).cumcount() + 1
+    df_exploded[output_col] = df_exploded[col]
+    df_exploded = df_exploded.drop(columns=[col])
+    df_exploded = df_exploded[~df_exploded[output_col].isna()]
+    return df_exploded
+
+def parse_date(x: Any) -> Any:
+    if pd.isna(x):
+        return None
+    try:
+        return parser.parse(str(x), dayfirst=True).date()
+    except:
+        return None
+    
+def clean_string(s: str) -> str:
+    if not isinstance(s, str):
+        return s
+
+    s = re.sub(r"[\x00-\x1F\x7F]", "", s)
+    s = s.replace("\u200b", "").replace("\xa0", " ")
+    s = re.sub(r"\s+", " ", s)
+    s = s.strip()
+
+    return s
+
+def trim_recursive(value: Any) -> Any:
+    if isinstance(value, str):
+        return clean_string(value)
+    elif isinstance(value, list):
+        return [trim_recursive(v) for v in value]
+    elif isinstance(value, dict):
+        return {k: trim_recursive(v) for k, v in value.items()}
+    return value
+
+def generate_normalized_tables(df_raw: pd.DataFrame) -> dict:
+    dfs_tables = {} 
+    dfs_tables['sorteios'] = df_raw.drop(columns=[ 
+            "dezenasOrdemSorteio", 
+            "dezenas", 
+            "premiacoes", 
+            "estadosPremiados", 
+            "localGanhadores", 
+            "trevos"
+        ]) 
+    dfs_tables['premiacoes'] = explode_normalize(df_raw, "premiacoes") 
+    dfs_tables['local_ganhadores'] = explode_normalize(df_raw, "localGanhadores") 
+    dfs_tables['estados_premiados'] = explode_normalize(df_raw, "estadosPremiados") 
+    dfs_tables['trevos'] = explode_ordered_list(df_raw, "trevos", "trevo") 
+    dfs_tables['dezenas_sorteadas'] = explode_ordered_list(df_raw, "dezenasOrdemSorteio", "dezena")
+
+    return dfs_tables
 
 def transform_df_raw(df_raw: pd.DataFrame) -> dict:
+    df_raw.to_csv(f'data/tmp/df_raw.csv')
     df_raw = df_raw.dropna(how="all")
     df_raw = df_raw[df_raw["concurso"].notna()]
     df_raw = df_raw.drop_duplicates(subset=["loteria", "concurso"], keep="first")
 
-    dfs_tables = {}
+    df_raw["data"] = df_raw["data"].apply(parse_date)
+    df_raw["data"] = pd.to_datetime(df_raw["data"]).dt.strftime("%Y-%m-%d")
+    df_raw["dataProximoConcurso"] = df_raw["dataProximoConcurso"].apply(parse_date)
+    df_raw["dataProximoConcurso"] = pd.to_datetime(df_raw["dataProximoConcurso"]).dt.strftime("%Y-%m-%d")
 
-    dfs_tables['sorteios'] = df_raw.drop(columns=[
-        "dezenasOrdemSorteio",
-        "dezenas",
-        "premiacoes",
-        "estadosPremiados",
-        "localGanhadores",
-        "trevos"
-    ])  
+    df_raw = df_raw.applymap(trim_recursive)
 
-    dfs_tables['premiacoes'] = explode_normalize(df_raw, "premiacoes")
-    dfs_tables['local_ganhadores'] = explode_normalize(df_raw, "localGanhadores")
-    dfs_tables['estados_premiados'] = explode_normalize(df_raw, "estadosPremiados")
-    dfs_tables['dezenas_sorteadas'] = explode_dezenas(df_raw)
+    dfs_tables = generate_normalized_tables(df_raw)
 
     for key, df in dfs_tables.items():
         df.to_parquet(f'data/silver/{key}.parquet', engine='pyarrow', compression='snappy')
+        df.to_csv(f'data/silver/{key}.csv')
 
     return dfs_tables
     
