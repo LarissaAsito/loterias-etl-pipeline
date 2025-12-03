@@ -12,7 +12,7 @@ O projeto segue a Arquitetura de Medalhão, dividida em:
 
 Os dados foram modelados em 6 tabelas, de acordo com o DER abaixo:
 
-![DER loterias](image.png)
+![DER loterias](der.png)
 
 ## Processo ETL
 ### Extract

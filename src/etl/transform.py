@@ -5,7 +5,6 @@ from typing import Any
 
 class Transformer:
     def transform_df_raw(self, df_raw: pd.DataFrame) -> dict:
-        df_raw.to_csv(f'data/tmp/df_raw.csv')
         df_raw = df_raw.dropna(how="all")
         df_raw = df_raw[df_raw["concurso"].notna()]
         df_raw = df_raw.drop_duplicates(subset=["loteria", "concurso"], keep="first")
