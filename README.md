@@ -47,7 +47,8 @@ As dependências estão no arquivo requirements.txt.
 2. Crie e ative um ambiente virtual (venv)
     ``` bash
     python -m venv .venv
-    source .venv/bin/activate
+    source .venv/bin/activate  # Linux/MacOS
+    source .\.venv\Scripts\activate  # Windows
     ```
 3. Instale as dependências
     ``` bash
