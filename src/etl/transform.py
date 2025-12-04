@@ -18,8 +18,7 @@ class Transformer:
         dfs_tables = self._generate_normalized_tables(df_raw)
 
         for key, df in dfs_tables.items():
-            df.to_parquet(f'data/silver/{key}.parquet', engine='pyarrow', compression='snappy')
-            df.to_csv(f'data/silver/{key}.csv')
+            df.to_parquet(f'data/silver/{key}.parquet', engine='pyarrow', compression='snappy', index=False)
 
         return dfs_tables
 
